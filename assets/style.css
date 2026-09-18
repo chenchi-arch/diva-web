@@ -1,0 +1,27 @@
+/* style.css — DIVA-01 Web 面板外框（画布 1280×800 等比缩放） */
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: #05080B;
+  color: #DFF3F6;
+  font-family: Arial, Helvetica, "Meiryo", sans-serif;
+  overflow: hidden;
+}
+#stage {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+#panel {
+  width: min(100vw, 160vh);
+  height: auto;
+  aspect-ratio: 1280 / 800;
+  display: block;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #24313D, 0 18px 60px rgba(0, 0, 0, .7);
+  background: #0A0E13;
+  touch-action: none;
+  cursor: pointer;
+}
+#fallback {
+  position: fixed; left: 12px; bottom: 10px;
+  font-size: 11px; color: #7C8B98;
+}
