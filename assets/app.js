@@ -519,7 +519,7 @@
     if (inRect(p, BTN.demo)) { loadDemo(); return; }
     if (inRect(p, BTN.clear)) { clearAll(); return; }
     if (inRect(p, BTN.exp)) { doExport(); return; }
-    for (var i = 0; i < 4; i++) if (p.x >= LX + 8 + i * ((LW - 16) / 4) && p.x <= LX + 8 + (i + 1) * ((LW - 16) / 4) && p.y >= TAB_Y + 10 && p.y <= TAB_Y + 14 + TAB_H) {
+    for (var i = 0; i < 4; i++) if (p.x >= LX + 8 + i * ((LW - 16) / 4) && p.x <= LX + 8 + (i + 1) * ((LW - 16) / 4) && p.y >= TAB_Y && p.y <= TAB_Y + TAB_H) {
       state.tab = i; redraw(); return;
     }
     for (var q = 0; q < PAR.length; q++) if (inRect(p, PAR_RECT[q])) {
@@ -550,7 +550,7 @@
         state.lastClick = null; redraw(); return;
       }
       state.lastClick = { t: nowT, x: p.x, y: p.y };
-      state.drag = { kind: h.kind, i: h.i, startY: p.y, startX: p.x, startSemi: h.pos.semi || 0, startMs: h.pos.ms || 0 };
+      state.drag = { kind: h.kind, i: h.i, startY: p.y, startX: p.x, startSemi: h.pos.semi || 0, startMs: h.pos.ms || 0, moved: false };
       redraw(); return;
     }
     var ni = noteAt(p);
@@ -584,6 +584,8 @@
     else if (state.drag.kind === 'curve') {
       var nq = state.notes[state.drag.i];
       if (!nq) return;
+      if (Math.abs(p.y - state.drag.startY) + Math.abs(p.x - state.drag.startX) > 4) state.drag.moved = true;
+      if (!state.drag.moved) return;                                          // 没拖动 = 留给“试听”回退
       var semi = state.drag.startSemi + (state.drag.startY - p.y) / ROWH;     // 1 行 = 1 半音
       semi = Math.max(-12, Math.min(12, Math.round(semi * 4) / 4));          // 0.25 半音步进
       nq.curve = [{ u: 0, semi: 0 }, { u: 0.5, semi: semi }, { u: 1, semi: 0 }];
@@ -594,6 +596,8 @@
     } else if (state.drag.kind === 'glide') {
       var ng = state.notes[state.drag.i];
       if (!ng) return;
+      if (Math.abs(p.x - state.drag.startX) + Math.abs(p.y - state.drag.startY) > 4) state.drag.moved = true;
+      if (!state.drag.moved) return;
       var tot = state.total || 1;
       var ms = state.drag.startMs - (p.x - state.drag.startX) / GW * tot;   // 手柄越往左=滑音越长（与画布几何一致）
       ms = Math.max(0, Math.min(600, Math.round(ms / 10) * 10));              // 10ms 步进，0–600ms
@@ -602,7 +606,21 @@
       redraw();
     }
   }
-  function onUp() { state.drag = null; }
+  function onUp() {
+    var d = state.drag;
+    state.drag = null;
+    // 弯音/滑音区域“只点不拖” → 回退为试听该音符（避免中段点击变死区）
+    if (d && (d.kind === 'curve' || d.kind === 'glide') && !d.moved) {
+      var n = state.notes[d.i];
+      if (n) {
+        state.sel = d.i;
+        audition(n.cons, n.vowel, n.midi, 0);
+        state.status = '试听音符 #' + d.i + ' ' + (n.r || '') + ' · midi=' + n.midi +
+          '（拖中段=弯音 · 拖小方块=滑音时长 · 双击控制点=清除）';
+        redraw();
+      }
+    }
+  }
 
   // ---------------------------------------------------------------- 导出
   function doExport() {
