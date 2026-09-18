@@ -195,6 +195,7 @@ puff 是"开口先喷一口气"。
 
 ## 4. 本轮踩的坑（长期有效）
 
+0. **GitHub Pages 的 favicon 404**：`file://` 本地测没有 favicon 请求，一上 Pages 就冒 2 条 404（浏览器自动抓 favicon.ico）→ 内联 data-URI favicon 解决。
 1. **`OfflineAudioContext` 渲染整段静音**：`out` 节点忘了 `connect(ctx.destination)`。
    → 教训：离线渲染"跑完没报错、长度为 0 之外全是 0"时，先查**最后一根线**。
 2. **"无前置事件的 linearRampToValueAtTime"起点不确定**：Chrome 下不按预期从当前值渐变，
@@ -223,7 +224,15 @@ puff 是"开口先喷一口气"。
 
 ---
 
-## 5. 复现命令
+## 5. 部署（GitHub Pages）
+
+- 仓库：https://github.com/chenchi-arch/diva-web （public，main 分支根目录）
+- 站点：**https://chenchi-arch.github.io/diva-web/**
+- 线上冒烟（2026-09-18 21:0x，无头 Edge 打线上 URL）：`__diva.version=web-v1`、示例 13 音/6386ms 装载 ✓；真实点击 ▶ → `playing=1, cur=3` 逐音推进 ✓；index.html 与 5 个 assets 全部 200 ✓
+- 首次冒烟抓到 2 个 404（浏览器自动请求 favicon.ico）→ 已内联 SVG data-URI favicon 修复，重推后 console 0 error/warning
+- 网络备注：本机直连 github.com 不稳（DNS 首个 IP 超时）；`git push` 经系统代理 127.0.0.1:7897 间歇可用，用重试循环推（第 6 次成功）；`api.github.com` 直连正常。
+
+## 6. 复现命令
 
 ```powershell
 cd D:\OpenClawTemp\diva-web
