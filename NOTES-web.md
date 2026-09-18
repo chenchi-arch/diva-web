@@ -311,6 +311,7 @@ puff 是"开口先喷一口气"。
 - **2026-09-18 22:3x · v1.1（卷帘添加音符）**：`api_push.js` 推送 commit `f8f40c4` → 线上校验：`assets/app.js` 200、含 marker `web-v1.1` ✓（`tools/httpcheck.js`）。
 - **2026-09-18 23:2x · v1.2（音符拖动/选择/填词 + 线条置顶）**：推送 commit `2558a49` → 线上校验：`assets/app.js` 200、含 marker `web-v1.2` ✓（Pages 重建约 1 分钟，二次重试命中）。
 - **2026-09-18 23:5x · v1.3（音头/音尾圆点控制滑音）**：推送 commit `9927e0d` → 线上校验：`assets/app.js` 200、含 marker `web-v1.3` ✓（二次重试命中）。
+- **2026-09-18 深夜 · v1.4（中点圆点回归 + 删除/撤回）**：推送 commit `f84c84e` → 线上校验：`assets/app.js` 200、含 marker `web-v1.4` ✓（一次命中）。
 
 ## 6. 复现命令
 
