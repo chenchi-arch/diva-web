@@ -30,11 +30,12 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   });
   const log = o => console.log(JSON.stringify(o));
 
-  // ① 选中 #2 ka → 拖中心控制点生成弯音：上拖 30px → 期望 +2.00 半音
+  // ① 选中 #2 ka → 拖「音尾圆点」上滑 30px → 期望尾端 +2.00 半音
   const g2 = geo[2];
-  const [mx, my] = D(g2.x + g2.w * 0.5, g2.yc);
-  await p.mouse.click(mx, my);              // 先单击选中（=试听+选中）
+  const [c2x, c2y] = D(g2.x + g2.w * 0.5, g2.yc);
+  await p.mouse.click(c2x, c2y);            // 先单击选中（=试听+选中）
   await p.waitForTimeout(220);
+  const [mx, my] = D(g2.x + g2.w, g2.yc);
   await p.mouse.move(mx, my); await p.mouse.down();
   for (let s = 1; s <= 6; s++) { await p.mouse.move(mx, my - s * 5 * sy); await p.waitForTimeout(25); }
   await p.mouse.up(); await p.waitForTimeout(200);
@@ -66,12 +67,13 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   });
   log({ step: 'render-with-curve', stats: r.stats });
 
-  // ④ 双击控制点 → 清除曲线
+  // ④ 双击音尾圆点 → 清除曲线
   const ch = await p.evaluate(() => {
     const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
-    const n = S.notes[2], semi = (n.curve && n.curve[1]) ? n.curve[1].semi : 0;
+    const n = S.notes[2], pts = (n.curve && n.curve.length >= 2) ? n.curve : [{ u: 1, semi: 0 }];
+    const semi = pts[pts.length - 1].semi;
     const rowY = m => GY + (TOP_MIDI - m) * ROWH;
-    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) * 0.5, y: rowY(n.midi + semi) + ROWH / 2 - 1 };
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2), y: rowY(n.midi + semi) + ROWH / 2 - 1 };
   });
   const [cx, cy] = D(ch.x, ch.y);
   await p.mouse.click(cx, cy); await p.waitForTimeout(120);

@@ -109,6 +109,24 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   await click(8 + 4 + ((304 - 8) / 5) * 1.5, 108 + (552 / 11) * 0.5);   // 点 い
   s = await st(); ok('Esc 取消选择 → 恢复试听', /试听/.test(s.status), s.status);
 
+  // 9) 选中音符 → 拖音尾圆点 = 滑音（de +2）；同一圆点横拖 = 长度；音头圆点 = -1
+  const g9 = await p.evaluate(() => {
+    const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
+    const rowY = m => GY + (TOP_MIDI - m) * ROWH;
+    const n = S.notes.find(x => x.r === 'de');
+    return { x: GX + n.t / tot * GW, w: Math.max(7, n.d / tot * GW - 2), yc: rowY(n.midi) + ROWH / 2 - 1, d: n.d };
+  });
+  await click(g9.x + g9.w * 0.5, g9.yc);                        // 选中 de
+  await drag(g9.x + g9.w, g9.yc, 0, -30);                       // 音尾圆点向上 → +2 半音
+  const r9 = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'de'); const c = n.curve; return { last: c && c[c.length - 1].semi }; });
+  ok('拖音尾圆点 → 滑音 +2.00', r9.last === 2, JSON.stringify(r9));
+  await drag(g9.x + g9.w, g9.yc - 30, 40, 0);                   // 同一圆点水平拖 → 调长度
+  const r10 = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'de'); return { d: n.d }; });
+  ok('选中态尾圆点横拖 → 调长度', r10.d > g9.d, g9.d + ' → ' + r10.d);
+  await drag(g9.x, g9.yc, 0, 15);                               // 音头圆点向下 → -1 半音
+  const r11 = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'de'); return { first: n.curve && n.curve[0] && n.curve[0].semi }; });
+  ok('拖音头圆点 → 滑音 -1.00', r11.first === -1, JSON.stringify(r11));
+
   await p.screenshot({ path: path.join(OUT, 'add-note.png') });
   console.log(res.join('\n'));
   console.log('console errors/warnings: ' + errs.length + (errs.length ? ' :: ' + JSON.stringify(errs.slice(0, 6)) : ''));

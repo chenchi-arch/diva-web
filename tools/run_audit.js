@@ -59,19 +59,22 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   await click(geo[4].x + geo[4].w * 0.5, geo[4].yc);
   s = await st(); ok('点卷帘音符 #4 → 试听', s.sel === 4, 'sel=' + s.sel);
 
-  // ---------- 4. 弯音：选中音符 → 拖中心控制点 ----------
-  await click(geo[2].x + geo[2].w * 0.5, geo[2].yc);           // 先选中 #2（单击=试听+选中）
-  await drag(geo[2].x + geo[2].w * 0.5, geo[2].yc, 0, -30);   // 再拖中心控制点
-  s = await st(); ok('选中后拖中心点 → 生成弯音 +2.00', s.curve2 && s.curve2[1] && s.curve2[1].semi === 2, JSON.stringify(s.curve2));
-  // 双击清除
+  // ---------- 4. 滑音：选中音符 → 拖音尾圆点（上）/ 音头圆点（下） ----------
+  await click(geo[2].x + geo[2].w * 0.5, geo[2].yc);            // 先选中 #2（单击=试听+选中）
+  await drag(geo[2].x + geo[2].w, geo[2].yc, 0, -30);           // 拖音尾圆点向上 → +2 半音
+  s = await st(); ok('拖音尾圆点 → 滑音 +2.00', s.curve2 && s.curve2.length >= 2 && s.curve2[s.curve2.length - 1].semi === 2, JSON.stringify(s.curve2));
+  await drag(geo[2].x, geo[2].yc, 0, 15);                       // 拖音头圆点向下 → -1 半音
+  s = await st(); ok('拖音头圆点 → 滑音 -1.00', s.curve2 && s.curve2[0] && s.curve2[0].semi === -1, JSON.stringify(s.curve2));
+  // 双击音尾圆点 → 清除
   const chp = await p.evaluate(() => {
     const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
-    const n = S.notes[2], semi = (n.curve && n.curve[1]) ? n.curve[1].semi : 0;
+    const n = S.notes[2], pts = (n.curve && n.curve.length >= 2) ? n.curve : [{ u: 1, semi: 0 }];
+    const semi = pts[pts.length - 1].semi;
     const rowY = m => GY + (TOP_MIDI - m) * ROWH;
-    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) * 0.5, y: rowY(n.midi + semi) + ROWH / 2 - 1 };
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2), y: rowY(n.midi + semi) + ROWH / 2 - 1 };
   });
   await click(chp.x, chp.y); await click(chp.x, chp.y);
-  s = await st(); ok('双击控制点 → 清除', s.curve2 === null, JSON.stringify(s.curve2));
+  s = await st(); ok('双击圆点 → 清除', s.curve2 === null, JSON.stringify(s.curve2));
 
   // ---------- 5. 滑音手柄 ----------
   const gh = await p.evaluate(() => {
