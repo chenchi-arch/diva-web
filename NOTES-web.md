@@ -213,6 +213,22 @@ puff 是"开口先喷一口气"。
 
 测试：`run_add.js` 24 项、`run_audit.js` 27 项、`run_test3.js`（D-1）均过；console 0 error / 0 warning。
 
+### 音质修复（2026-09-18 深夜，v1.5）：n/ん 鼻音重做
+
+反馈：「n 发音太假；辅音中 n 的音头有很强割裂感」→ 已修（**只动 n，其余辅音原样**）：
+
+| 项 | 旧 | 新 |
+| --- | --- | --- |
+| n 通路 | srcs → onepole 800 → vbar 电平 | **独立鼻音支路**：onepole 800 → onepole 1100 → reson 340Hz(Q0.8,G1.5)，电平×0.85 |
+| 起音 | ~0.7ms（像被切开） | 软起音 ~32ms |
+| 尾/衔接 | 20ms 硬收；n→元音处能量坑 −11dB | 软尾 ~34ms；鼻音保持到元音门开、与元音 34ms 交叉（坑 −2.4dB） |
+
+前后数字（n 单音，同素材）：起音跳变 0.0147→0.0049（3× 平滑）；1–2k 占比 17.9%→2.3%、2–4k 4.1%→0%、重心 704→410Hz；电平 ±0.2dB 对齐。
+工具：`tools/n_probe.js`（探测渲染）+ `tools/n_analyze.js`（包络/分带分析）；A/B：`test/nAB.mp3`（镜像 `workspace\diva-web-media\web-v15-n-AB.mp3`：旧→新 ん/な/いちばん）。
+**Max 侧同款改造规格**：onepole~800 → onepole~1100 → reson~ 1.5 340 0.8，电平常数 0.85；鼻音包络 rampsmooth~ 1400 1500；元音门交叉 1500——待 Cc 发话同步。
+
+全量套件复跑：run_add 24 / run_audit 27 / run_test3 / run_test1（端到端导出）全过，0 error。
+
 ### 轮 1 · 程序化端到端（无头 Edge + playwright-core，`tools/run_test1.js`）
 
 真实鼠标事件打在**屏幕上的页面**上（不是调内部函数）：
