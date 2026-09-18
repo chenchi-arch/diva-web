@@ -873,7 +873,7 @@
     window.__diva.loadDemo = loadDemo;
     window.__diva.play = play;
     window.__diva.audition = audition;
-    window.__diva.version = 'web-v1.4';
+    window.__diva.version = 'web-v1.5';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

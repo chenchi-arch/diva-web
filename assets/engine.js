@@ -76,6 +76,8 @@
     xfadeSmp: 2000,              // rampsmooth~ 2000 2000 ≈ 45.35 ms @44.1k
     vgUpSmp: 30, vgDnSmp: 300,   // rampsmooth~ 30 300
     consUpSmp: 30, consDnSmp: 900,
+    nasalUpSmp: 1400, nasalDnSmp: 1500, nasalVgUpSmp: 1500,   // n/ん：软起音(~32ms)/软尾(~34ms)/元音交叉(~34ms)
+    kNasal: 0.85,                                            // 鼻音支路电平系数（对齐原 vbar 电平）
     levelSmp: 32,
     paramSmp: 64,
     gainSmp: 32,
@@ -268,6 +270,11 @@
     this.cNoiseLvl = ctx.createGain(); this.cNoiseLvl.gain.value = 0;
     this.cVbarLp = onePole(ctx, 800);
     this.cVbarLvl = ctx.createGain(); this.cVbarLvl.gain.value = 0;
+    // 鼻音支路（仅 n/ん 使用）：二级低通 + 鼻腔谐振 —— 让 n 像“鼻音哼鸣”而不是“蒙住喇叭的锯齿”
+    this.cNasalLp1 = onePole(ctx, 800);
+    this.cNasalLp2 = onePole(ctx, 1100);
+    this.cNasalRes = reson2(ctx, 340, 0.8, 1.5);
+    this.cNasalLvl = ctx.createGain(); this.cNasalLvl.gain.value = 0;
     this.cSum = ctx.createGain(); this.cSum.gain.value = 1.0;
     this.cTrim = ctx.createGain(); this.cTrim.gain.value = C.ctrim;
     this.cEnv = ctx.createGain(); this.cEnv.gain.value = 0;
@@ -279,6 +286,7 @@
     }
     this.cNoiseLvl.connect(this.cSum);
     this.srcs.connect(this.cVbarLp).connect(this.cVbarLvl).connect(this.cSum);
+    this.srcs.connect(this.cNasalLp1).connect(this.cNasalLp2).connect(this.cNasalRes).connect(this.cNasalLvl).connect(this.cSum);
     this.cSum.connect(this.cTrim).connect(this.cEnv);
 
     // 主汇合
@@ -328,7 +336,7 @@
      this.rgWet.gain, this.rgDry.gain, this.outGain.gain, this.vibDepth.gain,
      this.vtrim.gain, this.sawLev.gain, this.trainLev.gain,
      this.presInv.gain, this.pressHp.gain, this.press.gain, this.presG.gain,
-     this.cNoiseLvl.gain, this.cVbarLvl.gain, this.cTrim.gain, this.airLev.gain,
+     this.cNoiseLvl.gain, this.cVbarLvl.gain, this.cNasalLvl.gain, this.cTrim.gain, this.airLev.gain,
      this.cal.gain, this.levelSum.gain, this.rgWetG.gain, this.vowelSum.gain,
      this.shelfInv.gain, this.shelfSum.gain, this.mix.gain, this.post.gain
     ].forEach(function (p) { p.setValueAtTime(p.value, 0); });
@@ -439,22 +447,38 @@
     }
 
     // 辅音段：噪声带切换 + 电平 + 爆发包络（0 → bStart ↗1 → durMs ↘0）
+    // n/ん 单独走“鼻音支路”：软起音/软收尾/元音交叉，避免突兀的割裂感
+    var isNasal = (note.cons === 9 || note.cons === 10);
+    st.nasal = isNasal;
     for (var bi = 0; bi < 6; bi++) this.cBandSel[bi].gain.setValueAtTime((bi === (c[3] - 1)) ? 1 : 0, t0);
     this.cNoiseLvl.gain.setValueAtTime(c[4], t0);
-    this.cVbarLvl.gain.setValueAtTime(c[5], t0);
-    var ce = this.cEnv.gain, up = t(C.consUpSmp, this.sr), dn = t(C.consDnSmp, this.sr);
+    if (isNasal) {
+      holdTo(this.cVbarLvl.gain, t0); this.cVbarLvl.gain.setValueAtTime(0, t0);
+      holdTo(this.cNasalLvl.gain, t0); this.cNasalLvl.gain.setValueAtTime(c[5] * C.kNasal, t0);
+    } else {
+      holdTo(this.cNasalLvl.gain, t0); this.cNasalLvl.gain.setValueAtTime(0, t0);
+      holdTo(this.cVbarLvl.gain, t0); this.cVbarLvl.gain.setValueAtTime(c[5], t0);
+    }
+    var ce = this.cEnv.gain;
+    var up = isNasal ? t(C.nasalUpSmp, this.sr) : t(C.consUpSmp, this.sr);
+    var dn = isNasal ? t(C.nasalDnSmp, this.sr) : t(C.consDnSmp, this.sr);
     holdTo(ce, t0);
     ce.setValueAtTime(0, t0);
     if (st.hasCons) {
       ce.setValueAtTime(0, t0 + bStart);
       ce.linearRampToValueAtTime(1, t0 + bStart + up);
-      ce.linearRampToValueAtTime(0, t0 + dur + dn);
+      if (isNasal) {
+        ce.setValueAtTime(1, t0 + Math.max(bStart + up, dur));   // 保持到元音门打开（避免鼻音先掉下去）
+        ce.linearRampToValueAtTime(0, t0 + dur + dn);            // 与元音交叉淡出
+      } else {
+        ce.linearRampToValueAtTime(0, t0 + dur + dn);
+      }
     } else {
       ce.setValueAtTime(0, t0 + dur);        // cons=0/12/13：不产生辅音爆发
     }
 
-    // 元音门：durMs 后打开
-    var vg = this.vGate.gain, vup = t(C.vgUpSmp, this.sr);
+    // 元音门：durMs 后打开（n/ん：加长交叉，鼻音→元音平滑过渡）
+    var vg = this.vGate.gain, vup = isNasal ? t(C.nasalVgUpSmp, this.sr) : t(C.vgUpSmp, this.sr);
     holdTo(vg, t0);
     vg.setValueAtTime(0, t0);
     vg.setValueAtTime(0, t0 + dur);
@@ -498,7 +522,7 @@
       var ce = this.cEnv.gain;
       ce.cancelScheduledValues(t1);
       ce.setValueAtTime(1, t1);
-      ce.linearRampToValueAtTime(0, t1 + t(C.consDnSmp, this.sr));
+      ce.linearRampToValueAtTime(0, t1 + t(st.nasal ? C.nasalDnSmp : C.consDnSmp, this.sr));
     }
     // ② 元音门没打开 → 保持关闭（无 ADSR / puff）
     if (!st.hasVowel || t1 < tOpen) {
