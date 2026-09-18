@@ -146,6 +146,22 @@
     catch (e) { try { param.cancelScheduledValues(time); } catch (e2) { } }
   }
 
+  // 面板音高曲线：分段 smoothstep 插值（curve = [{u,semi}, ...]，u=0..1 归一化位置）
+  function cvAtS(curve, u) {
+    if (!curve || curve.length < 2) return 0;
+    if (u <= curve[0].u) return curve[0].semi;
+    for (var i = 1; i < curve.length; i++) {
+      if (u <= curve[i].u) {
+        var a = curve[i - 1], b = curve[i];
+        var tt = (u - a.u) / Math.max(1e-6, b.u - a.u);
+        var sm = tt * tt * (3 - 2 * tt);
+        return a.semi + (b.semi - a.semi) * sm;
+      }
+    }
+    return curve[curve.length - 1].semi;
+  }
+  var PITCH_HZ = 0.020;          // 音高曲线采样间隔（≈50Hz）
+
   // ============================================================ DivaEngine
   function DivaEngine(ctx, opts) {
     opts = opts || {};
@@ -382,14 +398,36 @@
       hasCons: (c[4] > 0 || c[5] > 0)
     };
 
-    // 音高：滑音用指数斜坡（MIDI 线性 = 频率指数）
+    // 音高：把「接缝滑音段 + 音符内弯音曲线」统一采样成频点排程（≈50Hz，点间指数插值=MIDI 线性）
     var f = mtof(note.midi), glide = (note.glideMs || 0) / 1000;
+    var gate = (note.gateMs || 0) / 1000;
+    var curve = (note.curve && note.curve.length > 1) ? note.curve : null;
+    var hasGlide = (glide > 0.001 && note.prevMidi != null);
+    var startMidi = hasGlide ? note.prevMidi : note.midi;
+    var pts = [];
+    if (hasGlide) {
+      var K = Math.max(2, Math.round(glide / PITCH_HZ));
+      for (var k = 1; k <= K; k++) {
+        var u = k / K, sm = u * u * (3 - 2 * u);              // S 形（与面板同一条曲线）
+        pts.push({ dt: glide * u, midi: note.prevMidi + (note.midi - note.prevMidi) * sm });
+      }
+    }
+    if (curve && gate > 0) {
+      var N = Math.max(2, Math.round(gate / PITCH_HZ));
+      for (var q = 1; q <= N; q++) {
+        var uq = q / N;
+        pts.push({ dt: gate * uq, midi: note.midi + cvAtS(curve, uq) });
+      }
+    }
+    pts.sort(function (a, b) { return a.dt - b.dt; });
     [this.saw.frequency, this.pulse.frequency].forEach(function (fp) {
       holdTo(fp, t0);
-      if (glide > 0.001 && note.prevMidi != null) {
-        fp.setValueAtTime(mtof(note.prevMidi), t0);
-        fp.exponentialRampToValueAtTime(Math.max(1, f), t0 + glide);
-      } else fp.setValueAtTime(f, t0);
+      fp.setValueAtTime(mtof(startMidi), t0);
+      for (var i = 0; i < pts.length; i++) {
+        var tv = t0 + pts[i].dt;
+        var mv = Math.max(-24, Math.min(108, pts[i].midi));
+        fp.exponentialRampToValueAtTime(Math.max(1, mtof(mv)), tv);
+      }
     });
 
     // scoop：gate↑ 起 −24 cents，元音门打开后 120ms 归零
@@ -525,7 +563,7 @@
           midi: n.midi, cons: n.cons, vowel: (n.vowel == null ? null : n.vowel),
           glideMs: (n.glide > 0 && prev) ? n.glide : 0,
           prevMidi: prev ? prev.midi : null,
-          gateMs: n.d
+          gateMs: n.d, curve: n.curve || null
         });
       }
     }

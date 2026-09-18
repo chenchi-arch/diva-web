@@ -162,7 +162,8 @@
           else { var kk = findKana(n.cons, null); state.litKana = kk ? kk.k : null; }
           eng.playNote(ac.currentTime + 0.03, {
             midi: n.midi, cons: n.cons, vowel: n.vowel,
-            glideMs: (n.glide > 0 && prev) ? n.glide : 0, prevMidi: prev ? prev.midi : null, gateMs: n.d
+            glideMs: (n.glide > 0 && prev) ? n.glide : 0, prevMidi: prev ? prev.midi : null, gateMs: n.d,
+            curve: n.curve || null
           });
         }, Math.max(0, ms)));
       })(i);
@@ -287,6 +288,102 @@
     }
   }
 
+  // ---------------- D-1 音高曲线：几何 / 命中 / 插值 ----------------
+  function cvAtS(curve, u) {                     // 分段 smoothstep（与引擎同一条曲线）
+    if (!curve || curve.length < 2) return 0;
+    if (u <= curve[0].u) return curve[0].semi;
+    for (var i = 1; i < curve.length; i++) {
+      if (u <= curve[i].u) {
+        var a = curve[i - 1], b = curve[i];
+        var tt = (u - a.u) / Math.max(1e-6, b.u - a.u);
+        var sm = tt * tt * (3 - 2 * tt);
+        return a.semi + (b.semi - a.semi) * sm;
+      }
+    }
+    return curve[curve.length - 1].semi;
+  }
+  function noteGeo(i) {
+    var n = state.notes[i], tot = state.total || 1;
+    var nx = GX + n.t / tot * GW, nw = Math.max(7, n.d / tot * GW - 2);
+    return { n: n, x: nx, w: nw, yc: rowY(n.midi) + ROWH / 2 - 1, y: rowY(n.midi) };
+  }
+  function curveHandlePos(i) {
+    var g = noteGeo(i);
+    if (!g.n.curve || g.n.curve.length < 2) return null;
+    var semi = cvAtS(g.n.curve, 0.5);
+    return { x: g.x + g.w * 0.5, y: rowY(g.n.midi + semi) + ROWH / 2 - 1, semi: semi, i: i };
+  }
+  function glideHandlePos(i) {
+    var g = noteGeo(i);
+    if (!(g.n.glide > 0) || i <= 0) return null;
+    var p = noteGeo(i - 1), tot = state.total || 1, gp = g.n.glide / tot * GW;
+    return { x: g.x - gp / 2, y: (p.yc + g.yc) / 2, ms: g.n.glide, i: i, gp: gp };
+  }
+  function handleAt(p) {
+    for (var i = 0; i < state.notes.length; i++) {
+      var ch = curveHandlePos(i);
+      if (ch && Math.abs(p.x - ch.x) <= 12 && Math.abs(p.y - ch.y) <= 12) return { kind: 'curve', i: i, pos: ch };
+    }
+    for (var j = 0; j < state.notes.length; j++) {
+      var gh = glideHandlePos(j);
+      if (gh && Math.abs(p.x - gh.x) <= 13 && Math.abs(p.y - gh.y) <= 13) return { kind: 'glide', i: j, pos: gh };
+    }
+    // 无曲线时：拖「线中段」直接生成三点曲线
+    for (var k = 0; k < state.notes.length; k++) {
+      var g = noteGeo(k);
+      if (g.n.curve && g.n.curve.length > 1) continue;
+      if (p.x >= g.x + g.w * 0.3 && p.x <= g.x + g.w * 0.7 && Math.abs(p.y - g.yc) <= 9)
+        return { kind: 'curve', i: k, pos: { x: g.x + g.w * 0.5, y: g.yc, semi: 0, i: k } };
+    }
+    return null;
+  }
+
+  function drawNotes() {
+    var tot = state.total || 1;
+    for (var i = 0; i < state.notes.length; i++) {
+      var geo = noteGeo(i), n = geo.n, cur = (i === state.curIdx);
+      var cms = (T.CTAB && T.CTAB[n.cons]) ? T.CTAB[n.cons][2] : 0;
+      if (cms > 0) {                                   // 辅音段底衬（半透明）
+        var cw = Math.min(geo.w + 2, cms / tot * GW);
+        g.fillStyle = 'rgba(242,169,218,0.13)';
+        g.fillRect(geo.x, geo.y, cw, ROWH - 3);
+        ln(geo.x + cw, geo.y, geo.x + cw, geo.y + ROWH - 3, CLR.pink, 1, 0.35);
+      }
+      var gh = glideHandlePos(i);                      // 接缝滑音 S 段
+      if (gh) {
+        var pv = noteGeo(i - 1);
+        g.beginPath();
+        for (var s = 0; s <= 12; s++) {
+          var u = s / 12, sm = u * u * (3 - 2 * u);
+          var xx = (pv.x + pv.w) + (geo.x - (pv.x + pv.w)) * u;
+          var yy = pv.yc + (geo.yc - pv.yc) * sm;
+          if (s === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy);
+        }
+        g.strokeStyle = rgba(CLR.pink, 0.95); g.lineWidth = 1.8; g.stroke();
+        rr(gh.x - 4, gh.y - 4, 8, 8, CLR.pink, [0, 0, 0, 1], 1, 2);
+        if (n.glide >= 20) txt(n.glide + 'ms', gh.x + 7, gh.y - 5, 10, F_MON, 'left', true, CLR.pink);
+      }
+      if (n.curve && n.curve.length > 1) {             // 音符内弯音曲线
+        g.beginPath();
+        for (var q = 0; q <= 24; q++) {
+          var uq = q / 24, yq = rowY(n.midi + cvAtS(n.curve, uq)) + ROWH / 2 - 1;
+          var xq = geo.x + geo.w * uq;
+          if (q === 0) g.moveTo(xq, yq); else g.lineTo(xq, yq);
+        }
+        g.strokeStyle = rgba(CLR.pink, 0.95); g.lineWidth = 1.6; g.stroke();
+        var ch = curveHandlePos(i);
+        fcir(ch.x, ch.y, 4.5, CLR.pink, 0.95);
+        fcir(ch.x, ch.y, 2, CLR.bg, 1);
+        txt((ch.semi >= 0 ? '+' : '') + ch.semi.toFixed(2), ch.x + 8, ch.y - 5, 10, F_MON, 'left', true, CLR.pink);
+      } else {                                         // 直线音高线
+        ln(geo.x, geo.yc, geo.x + geo.w, geo.yc, cur ? CLR.pink : CLR.teal, 1.3, cur ? 1 : 0.55);
+      }
+      if (cur) { glow(CLR.pink, 16); rr(geo.x - 2, geo.y - 2, geo.w + 4, ROWH - 2 + 4, CLR.pink, null, 0, 4); noGlow(); }
+      rr(geo.x + 0.5, geo.y + 0.5 + 1, geo.w - 1, ROWH - 3, cur ? CLR.pink : '#1A2B31', cur ? CLR.pink : CLR.teal, cur ? 2 : 1.2, 3);
+      if (geo.w > 13 && n.r) txt(n.r, geo.x + 4, geo.y + ROWH - 4, 11, F_MON, 'left', false, cur ? CLR.bg : CLR.t1);
+    }
+  }
+
   function drawRoll() {
     txt('LED 时间标 · 示例 13 音 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
     var tot = state.total || 1;
@@ -324,15 +421,8 @@
       ln(x2, GY, x2, GY + GH, b2 ? CLR.teal : CLR.edge, b2 ? 1.4 : 1, b2 ? 0.32 : 0.45);
     }
     ln(KEY_X + KEY_W, GY, KEY_X + KEY_W, GY + GH, CLR.edge, 1.2);
-    // 音符
-    for (var i = 0; i < state.notes.length; i++) {
-      var n = state.notes[i];
-      var nx = GX + n.t / tot * GW, nw = Math.max(7, n.d / tot * GW - 2), ny = rowY(n.midi);
-      var cur = (i === state.curIdx);
-      if (cur) { glow(CLR.pink, 16); rr(nx - 2, ny - 2, nw + 4, ROWH - 2 + 4, CLR.pink, null, 0, 4); noGlow(); }
-      rr(nx + 0.5, ny + 0.5 + 1, nw - 1, ROWH - 3, cur ? CLR.pink : '#1A2B31', cur ? CLR.pink : CLR.teal, cur ? 2 : 1.2, 3);
-      if (nw > 13 && n.r) txt(n.r, nx + 4, ny + ROWH - 4, 11, F_MON, 'left', false, cur ? CLR.bg : CLR.t1);
-    }
+    // 音符 + 音高线/滑音/弯音/辅音底衬（D-1）
+    drawNotes();
   }
 
   function drawPlayhead() {
@@ -392,6 +482,7 @@
   function fmt(v, pr) { return pr.id === 'vib' ? (Math.round(v) + 'c') : (pr.id === 'gain' ? (Math.round(v) + 'dB') : Number(v).toFixed(2)); }
 
   // ---------------------------------------------------------------- 交互
+  function inRoll(p) { return p.x >= GX && p.x <= GX + GW && p.y >= GY && p.y <= GY + GH; }
   function pos(e) {
     var r = cv.getBoundingClientRect();
     return { x: (e.clientX - r.left) * (W0 / r.width), y: (e.clientY - r.top) * (H0 / r.height) };
@@ -448,6 +539,20 @@
       state.status = '试听 ' + k.k + '（' + k.r + '）cons=' + k.c + ' vowel=' + (k.v === null ? 'n' : k.v) + (k.gl ? ' +滑音' : '');
       redraw(); return;
     }
+    // D-1 手柄：弯音控制点 / 接缝滑音手柄（双击控制点 = 清除曲线）
+    var h = inRoll(p) ? handleAt(p) : null;
+    if (h) {
+      var nowT = now();
+      if (h.kind === 'curve' && state.lastClick && nowT - state.lastClick.t < 380 &&
+          Math.abs(p.x - state.lastClick.x) < 10 && Math.abs(p.y - state.lastClick.y) < 10) {
+        state.notes[h.i].curve = null;
+        state.status = '已清除音符 #' + h.i + ' 的弯音曲线';
+        state.lastClick = null; redraw(); return;
+      }
+      state.lastClick = { t: nowT, x: p.x, y: p.y };
+      state.drag = { kind: h.kind, i: h.i, startY: p.y, startX: p.x, startSemi: h.pos.semi || 0, startMs: h.pos.ms || 0 };
+      redraw(); return;
+    }
     var ni = noteAt(p);
     if (ni >= 0) {
       var n = state.notes[ni];
@@ -476,6 +581,26 @@
       if (pr.step >= 1) v = Math.round(v);
       setParam(pr.id, v);
     } else if (state.drag.kind === 'glitch') dragGlitch(p);
+    else if (state.drag.kind === 'curve') {
+      var nq = state.notes[state.drag.i];
+      if (!nq) return;
+      var semi = state.drag.startSemi + (state.drag.startY - p.y) / ROWH;     // 1 行 = 1 半音
+      semi = Math.max(-12, Math.min(12, Math.round(semi * 4) / 4));          // 0.25 半音步进
+      nq.curve = [{ u: 0, semi: 0 }, { u: 0.5, semi: semi }, { u: 1, semi: 0 }];
+      var cms = (T.CTAB && T.CTAB[nq.cons]) ? T.CTAB[nq.cons][2] : 0;
+      state.status = '音符 #' + state.drag.i + ' 弯音 ' + (semi >= 0 ? '+' : '') + semi.toFixed(2) + ' 半音 → 峰值落在 ' +
+        Math.round(nq.d / 2) + 'ms' + (cms > 0 && nq.d / 2 < cms ? '（⚠ 仍在辅音段内，滑音请拉长到 > ' + cms + 'ms）' : '');
+      redraw();
+    } else if (state.drag.kind === 'glide') {
+      var ng = state.notes[state.drag.i];
+      if (!ng) return;
+      var tot = state.total || 1;
+      var ms = state.drag.startMs - (p.x - state.drag.startX) / GW * tot;   // 手柄越往左=滑音越长（与画布几何一致）
+      ms = Math.max(0, Math.min(600, Math.round(ms / 10) * 10));              // 10ms 步进，0–600ms
+      ng.glide = ms;
+      state.status = '音符 #' + state.drag.i + ' 接缝滑音 ' + ms + 'ms' + (ms === 0 ? '（关闭）' : '');
+      redraw();
+    }
   }
   function onUp() { state.drag = null; }
 
