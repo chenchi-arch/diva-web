@@ -118,6 +118,13 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   await click(8 + 4 + ((LW - 8) / 3) * 0.5, 108 + chx * 0.5);  // きゃ
   s = await st(); ok('拗音格 きゃ → 试听', /きゃ|kya/.test(s.status), s.status);
 
+  // ---------- 10. 卷帘空白处添加音符 ----------
+  await click(616, 683);                                       // 清空
+  await click(1020, 242);                                      // 空白处（默认 8s 画布上添加）
+  s = await st(); ok('清空后空白添加 → 1 音', s.notes === 1, 'notes=' + s.notes);
+  await click(504, 683);                                       // 示例恢复
+  s = await st(); ok('示例恢复 → 13 音', s.notes === 13, 'notes=' + s.notes);
+
   await p.screenshot({ path: path.join(OUT, 'audit-final.png') });
   console.log(res.join('\n'));
   console.log('console errors/warnings: ' + errs.length + (errs.length ? ' :: ' + JSON.stringify(errs.slice(0, 6)) : ''));

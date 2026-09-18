@@ -40,7 +40,7 @@
 
   var state = {
     notes: [], total: 0, tab: 0, playing: 0, playBase: 0, timers: [],
-    curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点 ▶ 播放示例，点五十音格试听音节',
+    curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点卷帘空白处加音符（拖调长度）· 点 ▶ 播放 · 五十音格试听',
     mat: null, timers2: [],
     params: { breath: 0.28, bright: 0.55, vib: 30, gain: -10, puff: 0.35, glitch: 0.2, glitchOn: 1 },
     exporting: false, lastExportName: '', lastStats: null, drag: null, dirty: true
@@ -385,7 +385,7 @@
   }
 
   function drawRoll() {
-    txt('LED 时间标 · 示例 13 音 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
+    txt('点空白加音符 · 拖动调长度 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
     var tot = state.total || 1;
     var el2 = (state.playing && ac) ? Math.max(0, ac.currentTime - state.playBase) * 1000 : -1;
     // 标尺：LED 点阵（每 250ms 一颗）+ 每秒刻度
@@ -483,6 +483,17 @@
 
   // ---------------------------------------------------------------- 交互
   function inRoll(p) { return p.x >= GX && p.x <= GX + GW && p.y >= GY && p.y <= GY + GH; }
+  var SNAP_MS = 125;                                                 // 新增音符吸附网格（标尺 LED 250ms 的半格）
+  function snapT(t) { return Math.max(0, Math.round(t / SNAP_MS) * SNAP_MS); }
+  function occupied(midi, t) {
+    for (var i = 0; i < state.notes.length; i++) {
+      var n = state.notes[i];
+      if (n.midi !== midi) continue;
+      if (Math.abs(n.t - t) < SNAP_MS) return true;
+      if (t >= n.t && t < n.t + n.d) return true;
+    }
+    return false;
+  }
   function pos(e) {
     var r = cv.getBoundingClientRect();
     return { x: (e.clientX - r.left) * (W0 / r.width), y: (e.clientY - r.top) * (H0 / r.height) };
@@ -561,6 +572,20 @@
       state.status = '试听音符 #' + ni + ' ' + (n.r || '') + ' midi=' + n.midi;
       redraw(); return;
     }
+    // 卷帘空白处：新建音符（按住左右拖动调长度）
+    if (inRoll(p)) {
+      if (!state.total || state.total <= 0) state.total = 8000;      // 空画布：给一条默认 8 s 时间轴
+      var totN = state.total;
+      var nt = Math.max(0, Math.min(totN - 100, snapT((p.x - GX) / GW * totN)));
+      var nm = Math.max(48, Math.min(84, TOP_MIDI - Math.floor((p.y - GY) / ROWH)));
+      if (occupied(nm, nt)) { state.status = '该位置已有同音高音符（点它可试听）'; redraw(); return; }
+      var nn = { t: nt, d: 500, midi: nm, cons: 0, vowel: 0, r: 'a', glide: 0, curve: null };
+      state.notes.push(nn);
+      state.notes.sort(function (a, b) { return a.t - b.t; });
+      state.drag = { kind: 'newnote', note: nn, startX: p.x, moved: false };
+      state.status = '已添加音符 · midi ' + nm + ' · ' + (nt / 1000).toFixed(2) + 's（按住拖可调长度）';
+      redraw(); return;
+    }
   }
   function dragGlitch(p) {
     var bx = GLT_RECT[0] + 12, bw = GLT_RECT[2] - 24;
@@ -603,6 +628,16 @@
       ms = Math.max(0, Math.min(600, Math.round(ms / 10) * 10));              // 10ms 步进，0–600ms
       ng.glide = ms;
       state.status = '音符 #' + state.drag.i + ' 接缝滑音 ' + ms + 'ms' + (ms === 0 ? '（关闭）' : '');
+      redraw();
+    } else if (state.drag.kind === 'newnote') {
+      var nn2 = state.drag.note;
+      if (!nn2) return;
+      if (Math.abs(p.x - state.drag.startX) > 4) state.drag.moved = true;
+      if (!state.drag.moved) return;
+      var tot2 = state.total || 1;
+      var endT = snapT((p.x - GX) / GW * tot2);
+      nn2.d = Math.max(100, Math.min(tot2 - nn2.t, endT - nn2.t));
+      state.status = '音符长度 ' + Math.round(nn2.d) + ' ms（松手完成）';
       redraw();
     }
   }
@@ -686,7 +721,7 @@
     window.__diva.loadDemo = loadDemo;
     window.__diva.play = play;
     window.__diva.audition = audition;
-    window.__diva.version = 'web-v1';
+    window.__diva.version = 'web-v1.1';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
