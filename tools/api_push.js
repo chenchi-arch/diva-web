@@ -12,8 +12,12 @@ const DIR = 'D:/OpenClawTemp/diva-web';
 const MSG = process.argv[2] || 'sync via Git Data API';
 
 const env = Object.assign({}, process.env, {
-  GH_CONFIG_DIR: process.env.GH_CONFIG_DIR ||
-    'C:\\Users\\lenovo\\.openclaw\\credentials\\github\\system\\ghp_f4e69e1b4a0d5faef4b0421fa86d5726'
+  GH_CONFIG_DIR: (function () {
+    const full = 'C:\\Users\\lenovo\\.openclaw\\credentials\\github\\system\\ghp_f4e69e1b4a0d5faef4b0421fa86d5726';
+    const cur = process.env.GH_CONFIG_DIR;
+    // 传进来的目录必须真实存在，否则回退到已知真名（终端显示常把长名截断成带省略号的形状）
+    return (cur && fs.existsSync(path.join(cur, 'hosts.yml'))) ? cur : full;
+  })()
 });
 delete env.GH_TOKEN; delete env.HTTP_PROXY; delete env.HTTPS_PROXY; delete env.http_proxy; delete env.https_proxy;
 const token = execFileSync('gh', ['auth', 'token'], { env, encoding: 'utf8' }).trim();

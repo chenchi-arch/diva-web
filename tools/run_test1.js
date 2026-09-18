@@ -115,11 +115,14 @@ function log(o) { console.log(JSON.stringify(o)); }
   log({ step: 'export-status', expStats });
   await page.screenshot({ path: path.join(OUT, 'shot-4-after-export.png') });
 
-  // ---- ⑤ 参数交互（拖 BREATH 到 ~0.8） ----
-  await page.mouse.move(box.x + (8 + 8 + (176 - 16) * 0.8) * sx, box.y + (668 + 44 + 30) * sy);
-  await page.mouse.down(); await page.waitForTimeout(50); await page.mouse.up();
+  // ---- ⑤ 参数交互（旋钮：在 BREATH 卡上向上拖 120px） ----
+  var kx2 = box.x + (8 + 60) * sx, ky2 = box.y + (668 + 44 + 44) * sy;
+  await page.mouse.move(kx2, ky2);
+  await page.mouse.down();
+  for (var s = 1; s <= 6; s++) { await page.mouse.move(kx2, ky2 - 20 * s * sy); await page.waitForTimeout(30); }
+  await page.mouse.up();
   await page.waitForTimeout(200);
-  const par = await page.evaluate(() => ({ breath: window.__diva.state.params.breath, status: window.__diva.state.status }));
+  const par = await page.evaluate(() => ({ breath: window.__diva.state.params.breath, bright: window.__diva.state.params.bright }));
   log({ step: 'param-drag', par });
 
   // ---- 汇总 console ----
