@@ -264,6 +264,7 @@ puff 是"开口先喷一口气"。
 - 线上冒烟（2026-09-18 21:0x，无头 Edge 打线上 URL）：`__diva.version=web-v1`、示例 13 音/6386ms 装载 ✓；真实点击 ▶ → `playing=1, cur=3` 逐音推进 ✓；index.html 与 5 个 assets 全部 200 ✓
 - 首次冒烟抓到 2 个 404（浏览器自动请求 favicon.ico）→ 已内联 SVG data-URI favicon 修复，重推后 console 0 error/warning
 - 网络备注：本机直连 github.com 不稳（DNS 首个 IP 超时）；`git push` 经系统代理 127.0.0.1:7897 间歇可用，用重试循环推（第 6 次成功）；`api.github.com` 直连正常。
+- **2026-09-18 22:3x · v1.1（卷帘添加音符）**：`api_push.js` 推送 commit `f8f40c4` → 线上校验：`assets/app.js` 200、含 marker `web-v1.1` ✓（`tools/httpcheck.js`）。
 
 ## 6. 复现命令
 
