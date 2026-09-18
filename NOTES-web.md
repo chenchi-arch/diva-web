@@ -163,7 +163,7 @@ puff 是"开口先喷一口气"。
 | 清空后仍可添加（total=0 → 自动给 8s 画布） | ✓ `1 音 / total=8000` |
 | console | ✓ 0 error / 0 warning |
 
-`tools/run_audit.js` 增加第 10 节覆盖：清空 → 空白添加 → 1 音 → 示例恢复；**24/24 全过**。
+`tools/run_audit.js` 增加第 10 节覆盖：清空 → 空白添加 → 1 音 → 示例恢复；**全部通过（逐条见 `test/audit-report.txt`）**。
 证据：`test/add-note.png`、`test/add-report.txt`。
 
 - 备注：吸附是**时间域 125ms**（标尺半格），不是 BPM 网格——网页版无 tempo 概念。
