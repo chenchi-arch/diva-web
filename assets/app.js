@@ -40,7 +40,7 @@
 
   var state = {
     notes: [], total: 0, tab: 0, playing: 0, playBase: 0, timers: [],
-    curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点卷帘空白处加音符（拖调长度）· 点 ▶ 播放 · 五十音格试听',
+    curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点空白=加音符 · 拖音符=移位/音高 · 右缘=长度 · 选音符后点五十音格=填词',
     mat: null, timers2: [],
     params: { breath: 0.28, bright: 0.55, vib: 30, gain: -10, puff: 0.35, glitch: 0.2, glitchOn: 1 },
     exporting: false, lastExportName: '', lastStats: null, drag: null, dirty: true
@@ -133,7 +133,7 @@
   // ---------------------------------------------------------------- 序列
   function loadDemo() {
     var p = T.parseSeq(T.DEMO_SEQ);
-    state.notes = p.notes; state.total = p.total; state.curIdx = -1;
+    state.notes = p.notes; state.total = p.total; state.curIdx = -1; state.sel = -1;
     state.status = '示例：世界で一番お姫様 · ' + p.notes.length + ' 音 / ' + (p.total / 1000).toFixed(2) + ' s';
     redraw();
   }
@@ -322,26 +322,28 @@
   function handleAt(p) {
     for (var i = 0; i < state.notes.length; i++) {
       var ch = curveHandlePos(i);
-      if (ch && Math.abs(p.x - ch.x) <= 12 && Math.abs(p.y - ch.y) <= 12) return { kind: 'curve', i: i, pos: ch };
+      if (ch && Math.abs(p.x - ch.x) <= 14 && Math.abs(p.y - ch.y) <= 14) return { kind: 'curve', i: i, pos: ch };
     }
     for (var j = 0; j < state.notes.length; j++) {
       var gh = glideHandlePos(j);
       if (gh && Math.abs(p.x - gh.x) <= 13 && Math.abs(p.y - gh.y) <= 13) return { kind: 'glide', i: j, pos: gh };
     }
-    // 无曲线时：拖「线中段」直接生成三点曲线
-    for (var k = 0; k < state.notes.length; k++) {
-      var g = noteGeo(k);
-      if (g.n.curve && g.n.curve.length > 1) continue;
-      if (p.x >= g.x + g.w * 0.3 && p.x <= g.x + g.w * 0.7 && Math.abs(p.y - g.yc) <= 9)
-        return { kind: 'curve', i: k, pos: { x: g.x + g.w * 0.5, y: g.yc, semi: 0, i: k } };
+    // 选中且无曲线：拖「中心控制点」= 生成三点曲线（未选中音符的拖动＝移动音符）
+    var k2 = state.sel;
+    if (k2 >= 0 && state.notes[k2]) {
+      var g2 = noteGeo(k2);
+      if (!(g2.n.curve && g2.n.curve.length > 1) && g2.w >= 26 &&
+          Math.abs(p.x - (g2.x + g2.w * 0.5)) <= 14 && Math.abs(p.y - g2.yc) <= 14)
+        return { kind: 'curve', i: k2, pos: { x: g2.x + g2.w * 0.5, y: g2.yc, semi: 0, i: k2 } };
     }
     return null;
   }
 
   function drawNotes() {
     var tot = state.total || 1;
+    // —— 第一遍：辅音底衬 + 音符块 + 标签 ——
     for (var i = 0; i < state.notes.length; i++) {
-      var geo = noteGeo(i), n = geo.n, cur = (i === state.curIdx);
+      var geo = noteGeo(i), n = geo.n, cur = (i === state.curIdx), seln = (i === state.sel);
       var cms = (T.CTAB && T.CTAB[n.cons]) ? T.CTAB[n.cons][2] : 0;
       if (cms > 0) {                                   // 辅音段底衬（半透明）
         var cw = Math.min(geo.w + 2, cms / tot * GW);
@@ -349,43 +351,55 @@
         g.fillRect(geo.x, geo.y, cw, ROWH - 3);
         ln(geo.x + cw, geo.y, geo.x + cw, geo.y + ROWH - 3, CLR.pink, 1, 0.35);
       }
-      var gh = glideHandlePos(i);                      // 接缝滑音 S 段
+      if (cur) { glow(CLR.pink, 16); rr(geo.x - 2, geo.y - 2, geo.w + 4, ROWH - 2 + 4, CLR.pink, null, 0, 4); noGlow(); }
+      else if (seln) { glow(CLR.teal, 12); rr(geo.x - 2, geo.y - 2, geo.w + 4, ROWH - 2 + 4, CLR.teal, null, 0, 4); noGlow(); }
+      rr(geo.x + 0.5, geo.y + 0.5 + 1, geo.w - 1, ROWH - 3, cur ? CLR.pink : (seln ? '#1E3A40' : '#1A2B31'), cur ? CLR.pink : CLR.teal, cur ? 2 : (seln ? 2.2 : 1.2), 3);
+      if (geo.w > 13 && n.r) txt(n.r, geo.x + 4, geo.y + ROWH - 4, 11, F_MON, 'left', false, cur ? CLR.bg : CLR.t1);
+      if (geo.w > 22) ln(geo.x + geo.w - 3.5, geo.y + 4, geo.x + geo.w - 3.5, geo.y + ROWH - 7, cur ? CLR.bg : CLR.teal, 1.5, 0.32);   // 右缘=拉伸提示
+    }
+    // —— 第二遍：接缝滑音 / 音高线 / 弯音曲线 + 控制点（置顶，永不被音符块挡住） ——
+    for (var j = 0; j < state.notes.length; j++) {
+      var geo2 = noteGeo(j), n2 = geo2.n, cur2 = (j === state.curIdx), sel2 = (j === state.sel);
+      var gh = glideHandlePos(j);                      // 接缝滑音 S 段
       if (gh) {
-        var pv = noteGeo(i - 1);
+        var pv = noteGeo(j - 1);
         g.beginPath();
         for (var s = 0; s <= 12; s++) {
           var u = s / 12, sm = u * u * (3 - 2 * u);
-          var xx = (pv.x + pv.w) + (geo.x - (pv.x + pv.w)) * u;
-          var yy = pv.yc + (geo.yc - pv.yc) * sm;
+          var xx = (pv.x + pv.w) + (geo2.x - (pv.x + pv.w)) * u;
+          var yy = pv.yc + (geo2.yc - pv.yc) * sm;
           if (s === 0) g.moveTo(xx, yy); else g.lineTo(xx, yy);
         }
         g.strokeStyle = rgba(CLR.pink, 0.95); g.lineWidth = 1.8; g.stroke();
         rr(gh.x - 4, gh.y - 4, 8, 8, CLR.pink, [0, 0, 0, 1], 1, 2);
-        if (n.glide >= 20) txt(n.glide + 'ms', gh.x + 7, gh.y - 5, 10, F_MON, 'left', true, CLR.pink);
+        if (n2.glide >= 20) txt(n2.glide + 'ms', gh.x + 7, gh.y - 5, 10, F_MON, 'left', true, CLR.pink);
       }
-      if (n.curve && n.curve.length > 1) {             // 音符内弯音曲线
+      if (n2.curve && n2.curve.length > 1) {           // 音符内弯音曲线（置顶）
         g.beginPath();
         for (var q = 0; q <= 24; q++) {
-          var uq = q / 24, yq = rowY(n.midi + cvAtS(n.curve, uq)) + ROWH / 2 - 1;
-          var xq = geo.x + geo.w * uq;
+          var uq = q / 24, yq = rowY(n2.midi + cvAtS(n2.curve, uq)) + ROWH / 2 - 1;
+          var xq = geo2.x + geo2.w * uq;
           if (q === 0) g.moveTo(xq, yq); else g.lineTo(xq, yq);
         }
-        g.strokeStyle = rgba(CLR.pink, 0.95); g.lineWidth = 1.6; g.stroke();
-        var ch = curveHandlePos(i);
-        fcir(ch.x, ch.y, 4.5, CLR.pink, 0.95);
-        fcir(ch.x, ch.y, 2, CLR.bg, 1);
-        txt((ch.semi >= 0 ? '+' : '') + ch.semi.toFixed(2), ch.x + 8, ch.y - 5, 10, F_MON, 'left', true, CLR.pink);
-      } else {                                         // 直线音高线
-        ln(geo.x, geo.yc, geo.x + geo.w, geo.yc, cur ? CLR.pink : CLR.teal, 1.3, cur ? 1 : 0.55);
+        g.strokeStyle = rgba(CLR.pink, 0.95); g.lineWidth = 1.7; g.stroke();
+        var ch2 = curveHandlePos(j);
+        fcir(ch2.x, ch2.y, 6, CLR.pink, 0.95);
+        fcir(ch2.x, ch2.y, 2.4, CLR.bg, 1);
+        txt((ch2.semi >= 0 ? '+' : '') + ch2.semi.toFixed(2), ch2.x + 9, ch2.y - 6, 10, F_MON, 'left', true, CLR.pink);
+      } else if (sel2 && geo2.w >= 26) {               // 选中未弯音：中心控制点（拖它画弯音）
+        ln(geo2.x, geo2.yc, geo2.x + geo2.w, geo2.yc, CLR.teal, 1.3, 0.55);
+        glow(CLR.pink, 8);
+        fcir(geo2.x + geo2.w * 0.5, geo2.yc, 5.5, CLR.pink, 0.55);
+        noGlow();
+        fcir(geo2.x + geo2.w * 0.5, geo2.yc, 2.2, CLR.bg, 1);
+      } else {                                         // 普通：直线音高线（画在音符块上方）
+        ln(geo2.x, geo2.yc, geo2.x + geo2.w, geo2.yc, cur2 ? CLR.pink : CLR.teal, 1.3, cur2 ? 1 : 0.55);
       }
-      if (cur) { glow(CLR.pink, 16); rr(geo.x - 2, geo.y - 2, geo.w + 4, ROWH - 2 + 4, CLR.pink, null, 0, 4); noGlow(); }
-      rr(geo.x + 0.5, geo.y + 0.5 + 1, geo.w - 1, ROWH - 3, cur ? CLR.pink : '#1A2B31', cur ? CLR.pink : CLR.teal, cur ? 2 : 1.2, 3);
-      if (geo.w > 13 && n.r) txt(n.r, geo.x + 4, geo.y + ROWH - 4, 11, F_MON, 'left', false, cur ? CLR.bg : CLR.t1);
     }
   }
 
   function drawRoll() {
-    txt('点空白加音符 · 拖动调长度 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
+    txt('点空白=加音符 · 拖音符=移动/音高 · 右缘=长度 · 选中后点五十音格=填词 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
     var tot = state.total || 1;
     var el2 = (state.playing && ac) ? Math.max(0, ac.currentTime - state.playBase) * 1000 : -1;
     // 标尺：LED 点阵（每 250ms 一颗）+ 每秒刻度
@@ -546,8 +560,17 @@
     var k = kanaAt(p);
     if (k) {
       if (k.c < 0) { state.status = k.k + '（长音符号，无独立发声）'; redraw(); return; }
-      audition(k.c, k.v, 62, k.gl);
-      state.status = '试听 ' + k.k + '（' + k.r + '）cons=' + k.c + ' vowel=' + (k.v === null ? 'n' : k.v) + (k.gl ? ' +滑音' : '');
+      var selN = (state.sel >= 0) ? state.notes[state.sel] : null;
+      if (selN) {                                       // 已选中音符：点格子 = 给它填词（并试听）
+        selN.cons = k.c; selN.vowel = k.v;
+        selN.r = k.r || selN.r;
+        if (k.gl) selN.glide = Math.max(selN.glide || 0, 260);
+        audition(k.c, k.v, selN.midi, 0);
+        state.status = '音符 #' + state.sel + ' 发音 → ' + k.k + '（' + k.r + '）· 继续点格子可换 · Esc 取消选择';
+      } else {                                          // 未选中：试听
+        audition(k.c, k.v, 62, k.gl);
+        state.status = '试听 ' + k.k + '（' + k.r + '）cons=' + k.c + ' vowel=' + (k.v === null ? 'n' : k.v) + (k.gl ? ' +滑音' : '');
+      }
       redraw(); return;
     }
     // D-1 手柄：弯音控制点 / 接缝滑音手柄（双击控制点 = 清除曲线）
@@ -567,9 +590,10 @@
     var ni = noteAt(p);
     if (ni >= 0) {
       var n = state.notes[ni];
+      var gN = noteGeo(ni);
       state.sel = ni;
-      audition(n.cons, n.vowel, n.midi, 0);
-      state.status = '试听音符 #' + ni + ' ' + (n.r || '') + ' midi=' + n.midi;
+      state.drag = { kind: (p.x > gN.x + gN.w - 12) ? 'resize' : 'move', i: ni, note: n, startX: p.x, startY: p.y, startT: n.t, startMidi: n.midi, startD: n.d, moved: false };
+      state.status = '音符 #' + ni + ' ' + (n.r || '') + ' · 拖动=移位/音高 · 拖右缘=长度 · 中心点=弯音';
       redraw(); return;
     }
     // 卷帘空白处：新建音符（按住左右拖动调长度）
@@ -582,6 +606,7 @@
       var nn = { t: nt, d: 500, midi: nm, cons: 0, vowel: 0, r: 'a', glide: 0, curve: null };
       state.notes.push(nn);
       state.notes.sort(function (a, b) { return a.t - b.t; });
+      state.sel = state.notes.indexOf(nn);
       state.drag = { kind: 'newnote', note: nn, startX: p.x, moved: false };
       state.status = '已添加音符 · midi ' + nm + ' · ' + (nt / 1000).toFixed(2) + 's（按住拖可调长度）';
       redraw(); return;
@@ -639,19 +664,51 @@
       nn2.d = Math.max(100, Math.min(tot2 - nn2.t, endT - nn2.t));
       state.status = '音符长度 ' + Math.round(nn2.d) + ' ms（松手完成）';
       redraw();
+    } else if (state.drag.kind === 'move' || state.drag.kind === 'resize') {
+      var nd = state.notes[state.drag.i];
+      if (!nd) return;
+      if (Math.abs(p.x - state.drag.startX) > 4 || Math.abs(p.y - state.drag.startY) > 4) state.drag.moved = true;
+      if (!state.drag.moved) return;
+      var totM = state.total || 1;
+      if (state.drag.kind === 'move') {
+        var nt2 = snapT(state.drag.startT + (p.x - state.drag.startX) / GW * totM);
+        nd.t = Math.max(0, Math.min(totM - nd.d, nt2));
+        nd.midi = Math.max(48, Math.min(84, state.drag.startMidi - Math.round((p.y - state.drag.startY) / ROWH)));
+        state.status = '移动音符 #' + state.drag.i + ' → midi ' + nd.midi + ' · ' + (nd.t / 1000).toFixed(2) + 's';
+      } else {
+        nd.d = Math.max(100, Math.min(totM - nd.t, snapT(state.drag.startD + (p.x - state.drag.startX) / GW * totM)));
+        state.status = '长度 ' + Math.round(nd.d) + ' ms（松手完成）';
+      }
+      redraw();
     }
   }
   function onUp() {
     var d = state.drag;
     state.drag = null;
+    if (!d) return;
     // 弯音/滑音区域“只点不拖” → 回退为试听该音符（避免中段点击变死区）
-    if (d && (d.kind === 'curve' || d.kind === 'glide') && !d.moved) {
+    if ((d.kind === 'curve' || d.kind === 'glide') && !d.moved) {
       var n = state.notes[d.i];
       if (n) {
         state.sel = d.i;
         audition(n.cons, n.vowel, n.midi, 0);
         state.status = '试听音符 #' + d.i + ' ' + (n.r || '') + ' · midi=' + n.midi +
-          '（拖中段=弯音 · 拖小方块=滑音时长 · 双击控制点=清除）';
+          '（拖中心点=弯音 · 拖小方块=滑音时长 · 双击控制点=清除）';
+        redraw();
+      }
+    }
+    // 音符“只点不拖” → 试听；拖动完成 → 落位排序
+    if (d.kind === 'move' || d.kind === 'resize') {
+      var n1 = state.notes[d.i];
+      if (!n1) return;
+      if (!d.moved) {
+        state.sel = d.i;
+        audition(n1.cons, n1.vowel, n1.midi, 0);
+        state.status = '试听音符 #' + d.i + ' ' + (n1.r || '') + ' · midi=' + n1.midi + '（拖动=移位/音高 · 拖右缘=长度）';
+        redraw();
+      } else {
+        state.notes.sort(function (a, b) { return a.t - b.t; });
+        state.sel = d.note ? state.notes.indexOf(d.note) : -1;
         redraw();
       }
     }
@@ -711,6 +768,9 @@
     cv.addEventListener('pointerdown', onDown);
     cv.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') { state.sel = -1; state.status = '已取消选择'; redraw(); }
+    });
     loadDemo();
     state.dirty = true; loop();
 
@@ -721,7 +781,7 @@
     window.__diva.loadDemo = loadDemo;
     window.__diva.play = play;
     window.__diva.audition = audition;
-    window.__diva.version = 'web-v1.1';
+    window.__diva.version = 'web-v1.2';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

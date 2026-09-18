@@ -71,6 +71,44 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   await click(504, 683);
   s = await st(); ok('示例恢复 → 13 音', s.n === 13, 'notes=' + s.n);
 
+  // 6) 拖动音符 = 移位/音高（ba: t=3558, midi=68 → +30px/-15px → t=3750, midi=69）
+  const g6 = await p.evaluate(() => {
+    const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
+    const rowY = m => GY + (TOP_MIDI - m) * ROWH;
+    const n = S.notes.find(x => x.r === 'ba');
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) * 0.5, yc: rowY(n.midi) + ROWH / 2 - 1 };
+  });
+  await drag(g6.x, g6.yc, 30, -15);
+  const r6 = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'ba'); return { midi: n.midi, t: n.t }; });
+  ok('拖动音符 → 移位+音高', r6.midi === 69 && r6.t === 3750, JSON.stringify(r6));
+
+  // 7) 拖右缘 = 调长度（hi: 572ms → 变长）
+  const g7 = await p.evaluate(() => {
+    const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
+    const rowY = m => GY + (TOP_MIDI - m) * ROWH;
+    const n = S.notes.find(x => x.r === 'hi');
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) - 3, yc: rowY(n.midi) + ROWH / 2 - 1, d: n.d };
+  });
+  await drag(g7.x, g7.yc, 50, 0);
+  const r7 = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'hi'); return { d: n.d }; });
+  ok('拖右缘 → 调长度', r7.d > g7.d, g7.d + ' → ' + r7.d);
+
+  // 8) 选中音符 → 点五十音格 填词；Esc 取消后恢复试听
+  const ci = await p.evaluate(() => window.__diva.state.notes.findIndex(x => x.r === 'chi'));
+  const g8 = await p.evaluate(() => {
+    const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
+    const rowY = m => GY + (TOP_MIDI - m) * ROWH;
+    const n = S.notes.find(x => x.r === 'chi');
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) * 0.5, yc: rowY(n.midi) + ROWH / 2 - 1 };
+  });
+  await click(g8.x, g8.yc);                                    // 选中 chi
+  await click(8 + 4 + ((304 - 8) / 5) * 0.5, 108 + (552 / 11) * 1.5);   // 点 か
+  const r8 = await p.evaluate((i) => { const n = window.__diva.state.notes[i]; return { cons: n.cons, vowel: n.vowel, r: n.r }; }, ci);
+  ok('选中音符→点五十音格 填词', r8.cons === 1 && r8.vowel === 0 && r8.r === 'ka', JSON.stringify(r8));
+  await p.keyboard.press('Escape');
+  await click(8 + 4 + ((304 - 8) / 5) * 1.5, 108 + (552 / 11) * 0.5);   // 点 い
+  s = await st(); ok('Esc 取消选择 → 恢复试听', /试听/.test(s.status), s.status);
+
   await p.screenshot({ path: path.join(OUT, 'add-note.png') });
   console.log(res.join('\n'));
   console.log('console errors/warnings: ' + errs.length + (errs.length ? ' :: ' + JSON.stringify(errs.slice(0, 6)) : ''));

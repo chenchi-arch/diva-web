@@ -30,9 +30,11 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   });
   const log = o => console.log(JSON.stringify(o));
 
-  // ① 拖「线中段」生成弯音：#2 ka（长音）上拖 30px → 期望 +2.00 半音
+  // ① 选中 #2 ka → 拖中心控制点生成弯音：上拖 30px → 期望 +2.00 半音
   const g2 = geo[2];
   const [mx, my] = D(g2.x + g2.w * 0.5, g2.yc);
+  await p.mouse.click(mx, my);              // 先单击选中（=试听+选中）
+  await p.waitForTimeout(220);
   await p.mouse.move(mx, my); await p.mouse.down();
   for (let s = 1; s <= 6; s++) { await p.mouse.move(mx, my - s * 5 * sy); await p.waitForTimeout(25); }
   await p.mouse.up(); await p.waitForTimeout(200);

@@ -59,9 +59,10 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   await click(geo[4].x + geo[4].w * 0.5, geo[4].yc);
   s = await st(); ok('点卷帘音符 #4 → 试听', s.sel === 4, 'sel=' + s.sel);
 
-  // ---------- 4. 弯音：拖线中段 ----------
-  await drag(geo[2].x + geo[2].w * 0.5, geo[2].yc, 0, -30);
-  s = await st(); ok('拖线中段 → 生成弯音 +2.00', s.curve2 && s.curve2[1] && s.curve2[1].semi === 2, JSON.stringify(s.curve2));
+  // ---------- 4. 弯音：选中音符 → 拖中心控制点 ----------
+  await click(geo[2].x + geo[2].w * 0.5, geo[2].yc);           // 先选中 #2（单击=试听+选中）
+  await drag(geo[2].x + geo[2].w * 0.5, geo[2].yc, 0, -30);   // 再拖中心控制点
+  s = await st(); ok('选中后拖中心点 → 生成弯音 +2.00', s.curve2 && s.curve2[1] && s.curve2[1].semi === 2, JSON.stringify(s.curve2));
   // 双击清除
   const chp = await p.evaluate(() => {
     const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
@@ -113,10 +114,23 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   await click(504, 683);                                       // 示例
   s = await st(); ok('示例 → 13 音', s.notes === 13, 'notes=' + s.notes);
 
-  // ---------- 9. 五十音拗音格（滑音音节） ----------
+  // ---------- 9. 五十音拗音格（先取消选择 → 试听） ----------
+  await p.keyboard.press('Escape');
   await click(TAB_L + 8 + tw * 3.5, 98);                       // 拗音页
   await click(8 + 4 + ((LW - 8) / 3) * 0.5, 108 + chx * 0.5);  // きゃ
-  s = await st(); ok('拗音格 きゃ → 试听', /きゃ|kya/.test(s.status), s.status);
+  s = await st(); ok('拗音格 きゃ → 试听', /试听/.test(s.status) && /きゃ|kya/.test(s.status), s.status);
+
+  // ---------- 9b. 选中音符 → 点五十音格 填词 ----------
+  await click(TAB_L + 8 + tw * 0.5, 98);                       // 回清音页
+  await click(geo[4].x + geo[4].w * 0.5, geo[4].yc);           // 选中 #4
+  await click(8 + 4 + cwx * 0.5, 108 + chx * 1.5);             // 点 か
+  s = await p.evaluate(() => { const n = window.__diva.state.notes[4]; return { cons: n.cons, vowel: n.vowel, r: n.r }; });
+  ok('选中音符→点五十音格 填词', s.cons === 1 && s.vowel === 0 && s.r === 'ka', JSON.stringify(s));
+
+  // ---------- 9c. 拖动音符 → 移位/音高 ----------
+  await drag(geo[6].x + geo[6].w * 0.5, geo[6].yc, 30, -15);   // #6 ba: +30px/-15px
+  s = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'ba'); return { midi: n.midi, t: n.t }; });
+  ok('拖动音符 → 移位/音高', s.midi === 69 && s.t === 3750, JSON.stringify(s));
 
   // ---------- 10. 卷帘空白处添加音符 ----------
   await click(616, 683);                                       // 清空
