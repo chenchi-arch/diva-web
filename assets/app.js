@@ -42,7 +42,7 @@
     notes: [], total: 0, tab: 0, playing: 0, playBase: 0, timers: [],
     curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点 ▶ 播放示例，点五十音格试听音节',
     mat: null, timers2: [],
-    params: { breath: 0.28, bright: 0.85, vib: 30, gain: -10, puff: 0.35, glitch: 0.2, glitchOn: 1 },
+    params: { breath: 0.28, bright: 0.55, vib: 30, gain: -10, puff: 0.35, glitch: 0.2, glitchOn: 1 },
     exporting: false, lastExportName: '', lastStats: null, drag: null, dirty: true
   };
 

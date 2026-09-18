@@ -1,9 +1,9 @@
-/* sweep_bright.js — 亮度扫描：找与 Max 参考渲染最接近的 bright 等效值（用于量化“同参数下的音色偏差”） */
+﻿/* sweep_bright.js 鈥?浜害鎵弿锛氭壘涓?Max 鍙傝€冩覆鏌撴渶鎺ヨ繎鐨?bright 绛夋晥鍊硷紙鐢ㄤ簬閲忓寲鈥滃悓鍙傛暟涓嬬殑闊宠壊鍋忓樊鈥濓級 */
 const fs = require('fs'), path = require('path');
 const PW = 'C:/Users/lenovo/AppData/Roaming/npm/node_modules/openclaw/node_modules/playwright-core';
 const { chromium } = require(PW);
 const OUT = 'D:/OpenClawTemp/diva-web/test';
-const LIST = [0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.85];
+const LIST = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70];
 (async () => {
   const b = await chromium.launch({ executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', headless: true, args: ['--allow-file-access-from-files', '--mute-audio'] });
   const p = await b.newPage({ viewport: { width: 1000, height: 700 } });
@@ -28,3 +28,4 @@ const LIST = [0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.85];
   }
   await b.close();
 })().catch(e => { console.error('FATAL', e); process.exit(1); });
+

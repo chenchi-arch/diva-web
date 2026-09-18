@@ -64,7 +64,10 @@
   ];
 
   var DEFAULTS = {
-    breath: 0.28, bright: 0.85, vib: 30, gain: -10,
+    // 出厂亮度 0.55：Max 场景是 0.85，但网页版源频谱（周期波表 vs train~）比 Max 版亮一档，
+    // 0.55 才与 Max 0.85 的频谱对齐（实测 200-1k/1-4k/4-8k = 57.5/40.5/2.0 vs 参考 56.5/40.3/3.0）。
+    // 想回到 Max 原值：把 bright 设回 0.85。
+    breath: 0.28, bright: 0.55, vib: 30, gain: -10,
     puff: 0.35, glitch: 0.2, glitchOn: 1, presG: 3.4
   };
 
@@ -82,7 +85,7 @@
     vowelTargetMs: 70,           // DLC delay 70
     ctrim: 0.5, vtrim: 0.5, glitchGain: 0.72, shelfAmt: 0.28,
     quantBits: 6, loresF: 7500, loresQ: 0.3,
-    cal: 0.78                    // 电平标定（对齐 Max 版参考渲染；设 1.0 = 不标定）
+    cal: 0.97                    // 电平标定（在出厂 bright=0.55 下对齐 Max 版参考响度；设 1.0 = 不标定）
   };
 
   function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }

@@ -9,7 +9,9 @@
 
 ## 用法
 
-直接打开 `index.html`（双击即可，无需服务器）；或部署到 GitHub Pages 后访问。
+直接打开 `index.html`（双击即可，无需服务器）；或访问线上版本：
+
+**https://chenchi-arch.github.io/diva-web/**
 
 ```
 index.html
