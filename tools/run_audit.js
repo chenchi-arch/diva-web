@@ -65,6 +65,8 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   s = await st(); ok('拖音尾圆点 → 滑音 +2.00', s.curve2 && s.curve2.length >= 2 && s.curve2[s.curve2.length - 1].semi === 2, JSON.stringify(s.curve2));
   await drag(geo[2].x, geo[2].yc, 0, 15);                       // 拖音头圆点向下 → -1 半音
   s = await st(); ok('拖音头圆点 → 滑音 -1.00', s.curve2 && s.curve2[0] && s.curve2[0].semi === -1, JSON.stringify(s.curve2));
+  await drag(geo[2].x + geo[2].w * 0.5, geo[2].yc, 0, -15);     // 拖中间圆点向上 → +1 半音
+  s = await st(); ok('拖中间圆点 → 滑音 +1.00', s.curve2 && s.curve2[1] && s.curve2[1].semi === 1, JSON.stringify(s.curve2));
   // 双击音尾圆点 → 清除
   const chp = await p.evaluate(() => {
     const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;

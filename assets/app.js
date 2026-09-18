@@ -27,7 +27,8 @@
 
   var BTN = {
     play: [310, 12, 44, 38], stop: [360, 12, 44, 38], rew: [410, 12, 44, 38],
-    demo: [460, BOT_Y + 6, 88, 30], clear: [556, BOT_Y + 6, 88, 30], exp: [652, BOT_Y + 6, 138, 30]
+    demo: [460, BOT_Y + 6, 88, 30], clear: [556, BOT_Y + 6, 88, 30], exp: [652, BOT_Y + 6, 138, 30],
+    undo: [364, BOT_Y + 6, 88, 30]
   };
   var PAR = [
     { id: 'breath', name: 'BREATH', cn: '气声', min: 0, max: 1, step: 0.01 },
@@ -40,13 +41,27 @@
 
   var state = {
     notes: [], total: 0, tab: 0, playing: 0, playBase: 0, timers: [],
-    curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点空白=加音符 · 选中后拖音头/音尾圆点=滑音 · 拖右缘=长度 · 点五十音格=填词',
+    curIdx: -1, litKana: null, sel: -1, status: '就绪 · 点空白=加音符 · 选中后拖圆点=滑音/五十音格=填词 · Del=删除 · Ctrl+Z=撤回',
     mat: null, timers2: [],
     params: { breath: 0.28, bright: 0.55, vib: 30, gain: -10, puff: 0.35, glitch: 0.2, glitchOn: 1 },
     exporting: false, lastExportName: '', lastStats: null, drag: null, dirty: true
   };
 
   var cv, g, DPR = 1, ac = null, eng = null;
+  // 撤回栈（Ctrl+Z / 「撤回」按钮）：每次改动前压入快照
+  var undoS = [];
+  function snapState() { try { return JSON.stringify({ notes: state.notes, total: state.total, sel: state.sel }); } catch (e) { return null; } }
+  function pushSnap(s) { if (s) { undoS.push(s); if (undoS.length > 40) undoS.shift(); } }
+  function pushUndo() { pushSnap(snapState()); }
+  function undo() {
+    if (!undoS.length) { state.status = '没有可撤回的操作'; redraw(); return; }
+    try {
+      var s = JSON.parse(undoS.pop());
+      state.notes = s.notes; state.total = s.total; state.sel = s.sel;
+      state.status = '已撤回（还可撤 ' + undoS.length + ' 步）';
+    } catch (e) { state.status = '撤回失败：' + e; }
+    redraw();
+  }
 
   // ---------------------------------------------------------------- 小工具
   function rgba(hex, a) {
@@ -132,12 +147,14 @@
 
   // ---------------------------------------------------------------- 序列
   function loadDemo() {
+    if (state.notes.length || state.total > 0) pushUndo();
     var p = T.parseSeq(T.DEMO_SEQ);
     state.notes = p.notes; state.total = p.total; state.curIdx = -1; state.sel = -1;
     state.status = '示例：世界で一番お姫様 · ' + p.notes.length + ' 音 / ' + (p.total / 1000).toFixed(2) + ' s';
     redraw();
   }
   function clearAll() {
+    if (state.notes.length) pushUndo();
     state.notes = []; state.total = 0; state.curIdx = -1; state.sel = -1;
     state.status = '已清空';
     redraw();
@@ -325,10 +342,10 @@
     if (ks >= 0 && state.notes[ks]) {
       var gn = state.notes[ks];
       var gs = noteGeo(ks);
-      var pss = (gn.curve && gn.curve.length >= 2) ? gn.curve : [{ u: 0, semi: 0 }, { u: 1, semi: 0 }];
+      var pss = (gn.curve && gn.curve.length >= 2) ? gn.curve : [{ u: 0, semi: 0 }, { u: 0.5, semi: 0 }, { u: 1, semi: 0 }];
       for (var di = 0; di < pss.length; di++) {
         var dx2 = gs.x + gs.w * pss[di].u, dy2 = rowY(gn.midi + pss[di].semi) + ROWH / 2 - 1;
-        if (Math.abs(p.x - dx2) <= 11 && Math.abs(p.y - dy2) <= 11) return { kind: 'dot', i: ks, idx: di, pos: { x: dx2, y: dy2, semi: pss[di].semi } };
+        if (Math.abs(p.x - dx2) <= 11 && Math.abs(p.y - dy2) <= 11) return { kind: 'dot', i: ks, idx: di, dotN: pss.length, pos: { x: dx2, y: dy2, semi: pss[di].semi } };
       }
     }
     for (var j = 0; j < state.notes.length; j++) {
@@ -384,8 +401,8 @@
       } else {                                         // 普通：直线音高线（画在音符块上方）
         ln(geo2.x, geo2.yc, geo2.x + geo2.w, geo2.yc, cur2 ? CLR.pink : CLR.teal, 1.3, cur2 ? 1 : 0.55);
       }
-      if (sel2) {                                      // 选中：音头/音尾圆点（拽它画滑音）
-        var pss = (n2.curve && n2.curve.length >= 2) ? n2.curve : [{ u: 0, semi: 0 }, { u: 1, semi: 0 }];
+      if (sel2) {                                      // 选中：音头/中点/音尾圆点（拽它画滑音）
+        var pss = (n2.curve && n2.curve.length >= 2) ? n2.curve : [{ u: 0, semi: 0 }, { u: 0.5, semi: 0 }, { u: 1, semi: 0 }];
         for (var di = 0; di < pss.length; di++) {
           var ddx = geo2.x + geo2.w * pss[di].u, ddy = rowY(n2.midi + pss[di].semi) + ROWH / 2 - 1;
           glow(CLR.pink, 7);
@@ -399,7 +416,7 @@
   }
 
   function drawRoll() {
-    txt('点空白=加音符 · 拖音符=移动 · 选中后：拖圆点=滑音 / 右缘=长度 / 五十音格=填词 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
+    txt('点空白=加音符 · 拖音符=移动 · 选中后拖圆点=滑音 · Del=删除 · Ctrl+Z=撤回 · C3–C6', RX + RW - 6, RUL_Y + 22, 10, F_LAT, 'right', false, CLR.t2);
     var tot = state.total || 1;
     var el2 = (state.playing && ac) ? Math.max(0, ac.currentTime - state.playBase) * 1000 : -1;
     // 标尺：LED 点阵（每 250ms 一颗）+ 每秒刻度
@@ -454,7 +471,7 @@
     rr(0, BOT_Y, W0, H0 - BOT_Y, CLR.card, null, 0, 0);
     ln(0, BOT_Y, W0, BOT_Y, CLR.edge, 1);
     txt('SEQUENCE', 10, BOT_Y + 26, 11, F_MON, 'left', true, CLR.teal);
-    var B = [['示例', BTN.demo, false], ['清空', BTN.clear, false], [state.exporting ? '导出中…' : '导出 WAV ▼', BTN.exp, true]];
+    var B = [['撤回', BTN.undo, false], ['示例', BTN.demo, false], ['清空', BTN.clear, false], [state.exporting ? '导出中…' : '导出 WAV ▼', BTN.exp, true]];
     for (var i = 0; i < B.length; i++) {
       var r = B[i][1];
       rr(r[0], r[1], r[2], r[3], CLR.card2, B[i][2] ? CLR.pink : CLR.edge, 1.2, 6);
@@ -544,6 +561,7 @@
     if (inRect(p, BTN.demo)) { loadDemo(); return; }
     if (inRect(p, BTN.clear)) { clearAll(); return; }
     if (inRect(p, BTN.exp)) { doExport(); return; }
+    if (inRect(p, BTN.undo)) { undo(); return; }
     for (var i = 0; i < 4; i++) if (p.x >= LX + 8 + i * ((LW - 16) / 4) && p.x <= LX + 8 + (i + 1) * ((LW - 16) / 4) && p.y >= TAB_Y && p.y <= TAB_Y + TAB_H) {
       state.tab = i; redraw(); return;
     }
@@ -562,6 +580,7 @@
       if (k.c < 0) { state.status = k.k + '（长音符号，无独立发声）'; redraw(); return; }
       var selN = (state.sel >= 0) ? state.notes[state.sel] : null;
       if (selN) {                                       // 已选中音符：点格子 = 给它填词（并试听）
+        pushUndo();
         selN.cons = k.c; selN.vowel = k.v;
         selN.r = k.r || selN.r;
         if (k.gl) selN.glide = Math.max(selN.glide || 0, 260);
@@ -573,26 +592,27 @@
       }
       redraw(); return;
     }
-    // 手柄：选中音符的圆点（音头/音尾/中段 = 拖滑音；双击 = 清除）/ 接缝滑音手柄
+    // 手柄：选中音符的圆点（音头/中点/音尾 = 拖滑音；双击 = 清除）/ 接缝滑音手柄
     var h = inRoll(p) ? handleAt(p) : null;
     if (h) {
       var hN = state.notes[h.i];
       var nowT = now();
       if ((h.kind === 'dot' || h.kind === 'curve') && hN && state.lastClick && nowT - state.lastClick.t < 380 &&
           Math.abs(p.x - state.lastClick.x) < 10 && Math.abs(p.y - state.lastClick.y) < 10) {
+        pushUndo();
         hN.curve = null;
         state.status = '已清除音符 #' + h.i + ' 的滑音曲线';
         state.lastClick = null; redraw(); return;
       }
       state.lastClick = { t: nowT, x: p.x, y: p.y };
       if (h.kind === 'dot') {
-        var hLen = (hN && hN.curve && hN.curve.length >= 2) ? hN.curve.length : 2;
+        var hLen = (hN && hN.curve && hN.curve.length >= 2) ? hN.curve.length : (h.dotN || 3);
         state.sel = h.i;
-        state.drag = { kind: 'endzone', i: h.i, note: hN, idx: h.idx, axis: null, startX: p.x, startY: p.y, startSemi: h.pos.semi || 0, startT: hN.t, startMidi: hN.midi, startD: hN.d, moved: false };
-        state.status = '音符 #' + h.i + ' ' + (h.idx === 0 ? '音头' : (h.idx >= hLen - 1 ? '音尾' : '中段')) + '圆点：上下拖=滑音（双击=清除）';
+        state.drag = { kind: 'endzone', i: h.i, note: hN, idx: h.idx, dotN: h.dotN || hLen, axis: null, startX: p.x, startY: p.y, startSemi: h.pos.semi || 0, startT: hN.t, startMidi: hN.midi, startD: hN.d, moved: false, before: snapState() };
+        state.status = '音符 #' + h.i + ' ' + (h.idx === 0 ? '音头' : (h.idx >= hLen - 1 ? '音尾' : '中点')) + '圆点：上下拖=滑音（双击=清除）';
         redraw(); return;
       }
-      state.drag = { kind: h.kind, i: h.i, startY: p.y, startX: p.x, startSemi: h.pos.semi || 0, startMs: h.pos.ms || 0, moved: false };
+      state.drag = { kind: h.kind, i: h.i, startY: p.y, startX: p.x, startSemi: h.pos.semi || 0, startMs: h.pos.ms || 0, moved: false, before: snapState() };
       redraw(); return;
     }
     var ni = noteAt(p);
@@ -622,7 +642,7 @@
         state.status = '音符 #' + ni + ' ' + (eIdx === 0 ? '音头' : (eIdx >= pss0.length - 1 ? '音尾' : '中段')) + '圆点：上下拖=滑音（双击=清除）';
         redraw(); return;
       }
-      state.drag = { kind: (p.x > gN.x + gN.w - 12) ? 'resize' : 'move', i: ni, note: n, startX: p.x, startY: p.y, startT: n.t, startMidi: n.midi, startD: n.d, moved: false };
+      state.drag = { kind: (p.x > gN.x + gN.w - 12) ? 'resize' : 'move', i: ni, note: n, startX: p.x, startY: p.y, startT: n.t, startMidi: n.midi, startD: n.d, moved: false, before: snapState() };
       state.status = '音符 #' + ni + ' ' + (n.r || '') + ' · 拖动=移位/音高 · 选中后拖圆点=滑音 · 右缘=长度';
       redraw(); return;
     }
@@ -633,6 +653,7 @@
       var nt = Math.max(0, Math.min(totN - 100, snapT((p.x - GX) / GW * totN)));
       var nm = Math.max(48, Math.min(84, TOP_MIDI - Math.floor((p.y - GY) / ROWH)));
       if (occupied(nm, nt)) { state.status = '该位置已有同音高音符（点它可试听）'; redraw(); return; }
+      pushUndo();
       var nn = { t: nt, d: 500, midi: nm, cons: 0, vowel: 0, r: 'a', glide: 0, curve: null };
       state.notes.push(nn);
       state.notes.sort(function (a, b) { return a.t - b.t; });
@@ -717,13 +738,14 @@
       if (!state.drag.moved) return;
       if (!state.drag.axis) {
         var adx = Math.abs(p.x - state.drag.startX), ady = Math.abs(p.y - state.drag.startY);
-        state.drag.axis = (ady >= adx) ? 'pitch' : (state.drag.idx === 0 ? 'move' : 'resize');
+        var dnN = state.drag.dotN || 3, dnEnd = (state.drag.idx === 0 || state.drag.idx === dnN - 1);
+        state.drag.axis = (!dnEnd || ady >= adx) ? 'pitch' : (state.drag.idx === 0 ? 'move' : 'resize');
       }
       var totE = state.total || 1;
       if (state.drag.axis === 'pitch') {
         var se = state.drag.startSemi + (state.drag.startY - p.y) / ROWH;
         se = Math.max(-12, Math.min(12, Math.round(se * 4) / 4));
-        if (!ne.curve || ne.curve.length < 2) ne.curve = [{ u: 0, semi: 0 }, { u: 1, semi: 0 }];
+        if (!ne.curve || ne.curve.length < 2) ne.curve = [{ u: 0, semi: 0 }, { u: 0.5, semi: 0 }, { u: 1, semi: 0 }];
         ne.curve[Math.min(state.drag.idx, ne.curve.length - 1)].semi = se;
         var lblE = state.drag.idx === 0 ? '音头' : (state.drag.idx >= ne.curve.length - 1 ? '音尾' : '中段');
         state.status = '音符 #' + state.drag.i + ' ' + lblE + '滑音 ' + (se >= 0 ? '+' : '') + se.toFixed(2) + ' 半音';
@@ -750,25 +772,29 @@
         state.sel = d.i;
         audition(n.cons, n.vowel, n.midi, 0);
         state.status = '试听音符 #' + d.i + ' ' + (n.r || '') + ' · midi=' + n.midi +
-          '（拖音头/音尾圆点=滑音 · 双击圆点=清除 · 拖右缘=长度）';
+          '（拖音头/中/尾圆点=滑音 · 双击圆点=清除 · Del=删除 · Ctrl+Z=撤回）';
         redraw();
       }
     }
-    // 音符“只点不拖” → 试听；拖动完成 → 落位排序
+    // 音符“只点不拖” → 试听；拖动完成 → 撤回入栈 + 落位排序
     if (d.kind === 'move' || d.kind === 'resize' || d.kind === 'endzone') {
       var n1 = state.notes[d.i];
       if (!n1) return;
       if (!d.moved) {
         state.sel = d.i;
         audition(n1.cons, n1.vowel, n1.midi, 0);
-        state.status = '试听音符 #' + d.i + ' ' + (n1.r || '') + ' · midi=' + n1.midi + '（拖动=移位/音高 · 选中后拖圆点=滑音）';
+        state.status = '试听音符 #' + d.i + ' ' + (n1.r || '') + ' · midi=' + n1.midi + '（拖动=移位/音高 · 拖圆点=滑音 · Del=删除）';
         redraw();
-      } else if (d.kind !== 'endzone' || d.axis === 'move' || d.axis === 'resize') {
-        state.notes.sort(function (a, b) { return a.t - b.t; });
-        state.sel = d.note ? state.notes.indexOf(d.note) : -1;
+      } else {
+        pushSnap(d.before);
+        if (d.kind !== 'endzone' || d.axis === 'move' || d.axis === 'resize') {
+          state.notes.sort(function (a, b) { return a.t - b.t; });
+          state.sel = d.note ? state.notes.indexOf(d.note) : -1;
+        }
         redraw();
       }
     }
+    if (d.moved && (d.kind === 'glide' || d.kind === 'curve')) pushSnap(d.before);
   }
 
   // ---------------------------------------------------------------- 导出
@@ -826,7 +852,16 @@
     cv.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') { state.sel = -1; state.status = '已取消选择'; redraw(); }
+      if (ev.key === 'Escape') { state.sel = -1; state.status = '已取消选择'; redraw(); return; }
+      if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.sel >= 0 && state.notes[state.sel]) {
+        pushUndo();
+        var dn = state.notes[state.sel];
+        state.notes.splice(state.sel, 1);
+        state.status = '已删除音符 #' + state.sel + (dn.r ? ' ' + dn.r : '') + '（Ctrl+Z 撤回）';
+        state.sel = -1; redraw();
+        ev.preventDefault(); return;
+      }
+      if ((ev.key === 'z' || ev.key === 'Z') && (ev.ctrlKey || ev.metaKey)) { undo(); ev.preventDefault(); return; }
     });
     loadDemo();
     state.dirty = true; loop();
@@ -838,7 +873,7 @@
     window.__diva.loadDemo = loadDemo;
     window.__diva.play = play;
     window.__diva.audition = audition;
-    window.__diva.version = 'web-v1.3';
+    window.__diva.version = 'web-v1.4';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

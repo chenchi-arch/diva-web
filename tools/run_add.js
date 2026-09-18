@@ -127,6 +127,45 @@ const OUT = 'D:/OpenClawTemp/diva-web/test';
   const r11 = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'de'); return { first: n.curve && n.curve[0] && n.curve[0].semi }; });
   ok('拖音头圆点 → 滑音 -1.00', r11.first === -1, JSON.stringify(r11));
 
+  // 10) 拖中间圆点 → 滑音 +1.00
+  const gm = await p.evaluate(() => {
+    const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
+    const rowY = m => GY + (TOP_MIDI - m) * ROWH;
+    const n = S.notes.find(x => x.r === 'de');
+    const c = (n.curve && n.curve.length >= 2) ? n.curve : [{ u: 0.5, semi: 0 }];
+    const mid = c[Math.floor((c.length - 1) / 2)];
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) * mid.u, y: rowY(n.midi + mid.semi) + ROWH / 2 - 1 };
+  });
+  await drag(gm.x, gm.y, 0, -15);
+  const rm = await p.evaluate(() => { const n = window.__diva.state.notes.find(x => x.r === 'de'); return { mid: n.curve && n.curve[1] && n.curve[1].semi }; });
+  ok('拖中间圆点 → 滑音 +1.00', rm.mid === 1, JSON.stringify(rm));
+
+  // 11) Delete 键删除 + Ctrl+Z 撤回
+  const io = await p.evaluate(() => window.__diva.state.notes.findIndex(x => x.r === 'o'));
+  const go = await p.evaluate((i) => {
+    const S = window.__diva.state, tot = S.total || 1, GX = 372, GW = 900, ROWH = 15, TOP_MIDI = 84, GY = 100;
+    const rowY = m => GY + (TOP_MIDI - m) * ROWH;
+    const n = S.notes[i];
+    return { x: GX + n.t / tot * GW + Math.max(7, n.d / tot * GW - 2) * 0.5, yc: rowY(n.midi) + ROWH / 2 - 1 };
+  }, io);
+  await click(go.x, go.yc);
+  await p.keyboard.press('Delete');
+  await p.waitForTimeout(200);
+  const rd = await p.evaluate(() => ({ n: window.__diva.state.notes.length, o: window.__diva.state.notes.findIndex(x => x.r === 'o') }));
+  ok('Delete 键 → 删除选中音符', rd.n === 12 && rd.o === -1, JSON.stringify(rd));
+  await p.keyboard.press('Control+z');
+  await p.waitForTimeout(200);
+  const ru = await p.evaluate(() => ({ n: window.__diva.state.notes.length, o: window.__diva.state.notes.findIndex(x => x.r === 'o') }));
+  ok('Ctrl+Z → 撤回删除', ru.n === 13 && ru.o >= 0, JSON.stringify(ru));
+
+  // 12) 「撤回」按钮：加一个音符 → 点撤回 → 没了
+  await click(1020, 242);
+  const ra = await p.evaluate(() => window.__diva.state.notes.length);
+  ok('加音符 → 14', ra === 14, 'n=' + ra);
+  await click(408, 689);
+  const rb = await p.evaluate(() => ({ n: window.__diva.state.notes.length, m75: window.__diva.state.notes.filter(x => x.midi === 75).length }));
+  ok('「撤回」按钮 → 回到 13', rb.n === 13 && rb.m75 === 0, JSON.stringify(rb));
+
   await p.screenshot({ path: path.join(OUT, 'add-note.png') });
   console.log(res.join('\n'));
   console.log('console errors/warnings: ' + errs.length + (errs.length ? ' :: ' + JSON.stringify(errs.slice(0, 6)) : ''));
